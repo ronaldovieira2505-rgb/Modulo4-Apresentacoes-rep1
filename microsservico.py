@@ -1,15 +1,14 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from pptx import Presentation
-import google.generativeai as genai
+from google import genai
 import os
+from dotenv import load_dotenv
+
+# Carrega as variáveis de ambiente escondidas no arquivo .env
+load_dotenv()
 
 app = FastAPI()
-
-# Configuração da API do Gemini (Substitua pela sua chave real)
-CHAVE_API_GEMINI = "AIzaSyDzpFWchLxj-Vkq9hjmspYhj6NZUF9BnEY"
-genai.configure(api_key=CHAVE_API_GEMINI)
-
 
 # 1. Front-end do MVP
 @app.get("/", response_class=HTMLResponse)
@@ -43,13 +42,13 @@ async def get_form():
 
 
 # 2. Back-end: Processamento LLM e Geração do PPTX
+# 2. Back-end: Processamento LLM e Geração do PPTX
 @app.post("/gerar-pptx")
 async def gerar_pptx(texto_bruto: str = Form(...)):
-    # --- ETAPA 1: PROCESSAMENTO COM IA ---
-    # Inicializa o modelo (Flash é o mais rápido e barato para tarefas de texto curtas)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Busca a chave de forma segura
+    chave = os.environ.get("GEMINI_API_KEY")
+    cliente = genai.Client(api_key=chave)
 
-    # Engenharia de Prompt para garantir que a IA retorne o formato exato que precisamos
     prompt = f"""
     Você é um Tech Lead analisando anotações brutas de uma equipe de desenvolvimento.
     Resuma as seguintes atividades em 3 a 5 tópicos profissionais e curtos para serem apresentados em um slide de Sprint Review para stakeholders.
@@ -62,8 +61,11 @@ async def gerar_pptx(texto_bruto: str = Form(...)):
     {texto_bruto}
     """
 
-    # Chamada à API
-    resposta_ia = model.generate_content(prompt)
+    # Nova sintaxe de chamada da API
+    resposta_ia = cliente.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+    )
 
     # Pega o texto gerado e divide em uma lista de tópicos
     topicos_processados = resposta_ia.text.strip().split('\n')
@@ -81,11 +83,9 @@ async def gerar_pptx(texto_bruto: str = Form(...)):
     slide_conteudo.shapes.title.text = "Principais Entregas"
     corpo_texto = slide_conteudo.placeholders[1].text_frame
 
-    # A primeira linha precisa ser inserida no parágrafo padrão
     p0 = corpo_texto.paragraphs[0]
     p0.text = "Destaques da iteração:"
 
-    # Adiciona os tópicos gerados pela IA como bullet points
     for topico in topicos_processados:
         texto_limpo = topico.strip()
         if texto_limpo:
